@@ -1,4 +1,5 @@
 from datetime import timedelta
+import click
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from config import Config
@@ -40,6 +41,16 @@ def create_app():
                     ))
                     conn.commit()
 
+        # Add identification_status column if upgrading from earlier schema
+        if "cards" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("cards")]
+            if "identification_status" not in cols:
+                with db.engine.connect() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE cards ADD COLUMN identification_status VARCHAR(50)"
+                    ))
+                    conn.commit()
+
         # Seed AllowedEmail from ALLOWED_EMAILS config if table is empty (one-time migration)
         from app.models import AllowedEmail
         if AllowedEmail.query.count() == 0:
@@ -77,23 +88,62 @@ def create_app():
                     print(f"  #{card.scan_number} FAILED: {e}")
             print(f"Done: {ok}/{len(missing)} downloaded.")
 
+    @app.cli.command("download-back-thumbs")
+    def download_back_thumbs_command():
+        """Download missing back thumbnails for cards that have drive_file_id_back set."""
+        import os
+        from app.models import Card
+        from app.services.drive import download_thumbnail, THUMBS_DIR
+        with app.app_context():
+            cards = Card.query.filter(Card.drive_file_id_back.isnot(None)).all()
+            missing = [
+                c for c in cards
+                if not os.path.exists(os.path.join(THUMBS_DIR, f"{c.scan_number}_b.jpg"))
+            ]
+            print(f"{len(missing)} back thumbnail(s) to download.")
+            ok = 0
+            for card in missing:
+                try:
+                    download_thumbnail(card.drive_file_id_back, card.scan_number, side="back")
+                    print(f"  #{card.scan_number} OK")
+                    ok += 1
+                except Exception as e:
+                    print(f"  #{card.scan_number} FAILED: {e}")
+            print(f"Done: {ok}/{len(missing)} downloaded.")
+
     @app.cli.command("identify-cards")
-    def identify_cards_command():
-        """Run AI vision identification on all unidentified cards."""
+    @click.option("--rescan", is_flag=True, default=False,
+                  help="Re-process all cards regardless of identified status.")
+    def identify_cards_command(rescan):
+        """Run AI OCR identification on unidentified cards (--rescan for all)."""
         from app.models import Card
         from app.services.identify import identify_card
         with app.app_context():
-            cards = Card.query.filter_by(identified=False).all()
+            cards = Card.query.all() if rescan else Card.query.filter_by(identified=False).all()
             print(f"{len(cards)} card(s) to identify.")
             ok = matched = 0
             for card in cards:
                 try:
                     result = identify_card(card.scan_number)
-                    status = "MATCHED" if result.get("matched") else "NO MATCH"
-                    print(f"  #{card.scan_number} {status}: {result.get('pokemon_name', '?')} ({result.get('confidence', '?')})")
-                    ok += 1
+                    ocr = result.get("ocr") or {}
+                    ocr_summary = (
+                        f"name: {ocr.get('card_name') or '?'}, "
+                        f"number: {ocr.get('card_number') or '?'}, "
+                        f"set: {ocr.get('set_code') or '?'}"
+                    )
                     if result.get("matched"):
+                        print(
+                            f"  #{card.scan_number}: OCR={{{ocr_summary}}} → "
+                            f"MATCHED {result['tcg_card_id']} (score={result['score']})"
+                        )
                         matched += 1
+                    else:
+                        err = result.get("error", "score too low")
+                        print(
+                            f"  #{card.scan_number}: OCR={{{ocr_summary}}} → "
+                            f"NO MATCH (score={result.get('score', 0)}, {err})"
+                        )
+                    ok += 1
                 except Exception as e:
                     print(f"  #{card.scan_number} FAILED: {e}")
             print(f"Done: {ok}/{len(cards)} processed, {matched} matched.")

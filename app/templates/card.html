@@ -5,40 +5,108 @@
 <div class="detail-header">
   <a href="{{ url_for('main.index') }}" class="back-link">&larr; Back to catalog</a>
   <div class="detail-header-right">
-    <span class="id-badge {% if card.identified %}id-badge-ok{% else %}id-badge-pending{% endif %} id-badge-lg">
-      {% if card.identified %}Identified{% else %}Pending ID{% endif %}
+    <span class="id-badge {{ card.status_badge_class }} id-badge-lg">
+      {{ card.status_label }}
     </span>
     {% if is_admin %}
       <a href="{{ url_for('admin.edit_card', scan_number=card.scan_number) }}" class="btn btn-primary btn-sm">Edit Card</a>
     {% endif %}
+    <button id="examineBtn" class="btn-afis" data-scan="{{ card.scan_number }}">&#x2295; EXAMINE CANDIDATES</button>
   </div>
 </div>
 
-<div class="detail-layout">
+<div class="afis-workspace" id="afisWorkspace">
+  <div class="afis-header">
+    <span class="afis-title">EXAMINATION WORKSPACE &mdash; CARD #{{ card.scan_number }}</span>
+    <button id="afisCloseBtn" class="afis-close">&#x2715; CLOSE</button>
+  </div>
+  <div class="afis-panels">
+    <div class="afis-panel-unknown">
+      <div class="afis-panel-label">UNKNOWN &mdash; #{{ card.scan_number }}</div>
+      <div class="afis-unknown-img-wrap">
+        {% if card.thumbnail %}
+          <img src="{{ card.thumbnail }}" class="afis-unknown-img" />
+        {% else %}
+          <div class="afis-no-image">NO IMAGE</div>
+        {% endif %}
+      </div>
+      <div class="afis-features">
+        <div class="afis-features-label">EXTRACTED FEATURES</div>
+        <div id="afisFeaturesList">
+          <div class="afis-feature"><span class="afis-fk">STATUS:</span> <span class="afis-fv" style="color:#4a5568">AWAITING ANALYSIS</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="afis-divider">
+      <div class="afis-divider-line"></div>
+      <div class="afis-crosshair">&#x2295;</div>
+      <div class="afis-divider-line"></div>
+    </div>
+
+    <div class="afis-panel-candidates">
+      <div class="afis-panel-label" id="afisCandidateLabel">CANDIDATE HITS</div>
+      <div id="afisCandidateList">
+        <div class="afis-loading">
+          <div class="afis-spinner"></div>
+          ANALYZING&hellip;
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="detail-layout" id="detailLayout">
   <div class="detail-images">
     <div class="detail-image-group">
       {% if card.thumbnail %}
         <div class="detail-img-wrap">
           <img src="{{ card.thumbnail }}" id="front-img-{{ card.scan_number }}"
                alt="Front — Scan {{ card.scan_number }}" class="detail-img" />
-          <button class="rotate-btn"
-                  onclick="rotateFront('{{ card.scan_number }}')"
-                  title="Rotate 180°">&#8635;</button>
+          <span class="rotate-btn"
+                role="button"
+                tabindex="0"
+                data-scan="{{ card.scan_number }}"
+                data-side="front"
+                title="Rotate 180°">&#8635;</span>
           <div class="detail-img-label">Front</div>
           {% if card.front_link %}
-            <a href="{{ card.front_link }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm mt-sm">
+            <a href="{{ card.front_link }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm mt-sm"
+               title="Opens in Google Drive — requires Drive access">
               View full scan
             </a>
           {% endif %}
         </div>
       {% endif %}
 
-      {% if card.back_thumbnail %}
+      {% if card.thumbnail and card.drive_file_id_back %}
+        <div class="swap-btn-wrap">
+          <span class="swap-btn"
+                role="button"
+                tabindex="0"
+                data-scan="{{ card.scan_number }}"
+                title="Swap front and back">&#8644;</span>
+        </div>
+      {% endif %}
+
+      {% if card.drive_file_id_back %}
         <div class="detail-img-wrap">
-          <img src="{{ card.back_thumbnail }}" alt="Back — Scan {{ card.scan_number }}" class="detail-img" />
+          {% if has_back_thumb %}
+            <img src="{{ card.back_thumbnail }}" id="back-img-{{ card.scan_number }}"
+                 alt="Back — Scan {{ card.scan_number }}" class="detail-img" />
+            <span class="rotate-btn"
+                  role="button"
+                  tabindex="0"
+                  data-scan="{{ card.scan_number }}"
+                  data-side="back"
+                  title="Rotate 180°">&#8635;</span>
+          {% else %}
+            <div class="card-thumb-placeholder detail-img">No back scan available</div>
+          {% endif %}
           <div class="detail-img-label">Back</div>
           {% if card.back_link %}
-            <a href="{{ card.back_link }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm mt-sm">
+            <a href="{{ card.back_link }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm mt-sm"
+               title="Opens in Google Drive — requires Drive access">
               View full scan
             </a>
           {% endif %}
@@ -108,15 +176,43 @@
 
     <div class="detail-actions">
       {% if card.front_link %}
-        <a href="{{ card.front_link }}" target="_blank" rel="noopener" class="btn btn-outline">
+        <a href="{{ card.front_link }}" target="_blank" rel="noopener" class="btn btn-outline"
+           title="Opens in Google Drive — requires Drive access">
           View front scan (600 DPI)
         </a>
       {% endif %}
       {% if card.back_link %}
-        <a href="{{ card.back_link }}" target="_blank" rel="noopener" class="btn btn-outline">
+        <a href="{{ card.back_link }}" target="_blank" rel="noopener" class="btn btn-outline"
+           title="Opens in Google Drive — requires Drive access">
           View back scan (600 DPI)
         </a>
       {% endif %}
+    </div>
+
+    <div class="edit-identity-section">
+      <h3>Edit Identity</h3>
+      <form method="post"
+            action="{{ url_for('main.identify_manual', scan_number=card.scan_number) }}"
+            class="edit-identity-form">
+        <div class="edit-identity-fields">
+          <div class="form-group">
+            <label>Pokémon Name</label>
+            <input type="text" name="pokemon_name" value="{{ card.card_name or '' }}"
+                   class="form-input" placeholder="e.g. Charizard" />
+          </div>
+          <div class="form-group">
+            <label>Set Name</label>
+            <input type="text" name="set_name" value="{{ card.set_name or '' }}"
+                   class="form-input" placeholder="e.g. Base Set" />
+          </div>
+          <div class="form-group">
+            <label>Card Number</label>
+            <input type="text" name="card_number" value="{{ card.set_number or '' }}"
+                   class="form-input" placeholder="e.g. 4/102" />
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Save &amp; Verify</button>
+      </form>
     </div>
 
     <div class="category-section">
@@ -125,7 +221,7 @@
         {% for cat in card.categories %}
           <span class="cat-tag" id="cat-tag-{{ cat.id }}" data-name="{{ cat.name }}">
             {{ cat.name }}
-            <button class="cat-remove" onclick="removeCat('{{ card.scan_number }}', {{ cat.id }})"
+            <button class="cat-remove" data-scan="{{ card.scan_number }}" data-cat-id="{{ cat.id }}"
                     title="Remove">&times;</button>
           </span>
         {% else %}
@@ -142,22 +238,43 @@
             {% endif %}
           {% endfor %}
         </select>
-        <button class="btn btn-sm btn-secondary" onclick="addCat('{{ card.scan_number }}')">Add</button>
+        <button id="addCatBtn" class="btn btn-sm btn-secondary" data-scan="{{ card.scan_number }}">Add</button>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-async function rotateFront(scanNum) {
-  const resp = await fetch('/card/' + scanNum + '/rotate', {method: 'POST'});
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function rotateSide(scanNum, side) {
+  const url = '/card/' + scanNum + '/rotate' + (side === 'back' ? '?side=back' : '');
+  const resp = await fetch(url, {method: 'POST'});
   if (resp.ok) {
-    const img = document.getElementById('front-img-' + scanNum);
+    const imgId = (side === 'back' ? 'back-img-' : 'front-img-') + scanNum;
+    const img = document.getElementById(imgId);
     if (img) {
-      const url = new URL(img.src, location.href);
-      url.searchParams.set('t', Date.now());
-      img.src = url.toString();
+      const u = new URL(img.src, location.href);
+      u.searchParams.set('t', Date.now());
+      img.src = u.toString();
     }
+  }
+}
+
+async function swapSides(scanNum) {
+  const resp = await fetch('/card/' + scanNum + '/swap-sides', {method: 'POST'});
+  if (resp.ok) {
+    const t = Date.now();
+    ['front-img-', 'back-img-'].forEach(prefix => {
+      const img = document.getElementById(prefix + scanNum);
+      if (img) {
+        const u = new URL(img.src, location.href);
+        u.searchParams.set('t', t);
+        img.src = u.toString();
+      }
+    });
   }
 }
 
@@ -179,8 +296,9 @@ async function addCat(scanNum) {
     span.className = 'cat-tag';
     span.id = 'cat-tag-' + data.category.id;
     span.dataset.name = data.category.name;
-    span.innerHTML = escHtml(data.category.name) +
-      ` <button class="cat-remove" onclick="removeCat('${scanNum}', ${data.category.id})" title="Remove">&times;</button>`;
+    span.innerHTML = escHtml(data.category.name)
+      + ' <button class="cat-remove" data-scan="' + escHtml(scanNum)
+      + '" data-cat-id="' + data.category.id + '" title="Remove">&times;</button>';
     tags.appendChild(span);
     sel.remove(sel.selectedIndex);
     sel.value = '';
@@ -211,8 +329,31 @@ async function removeCat(scanNum, catId) {
   }
 }
 
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+document.addEventListener('DOMContentLoaded', function () {
+  // Rotate buttons
+  document.querySelectorAll('.rotate-btn[data-scan]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      rotateSide(this.dataset.scan, this.dataset.side || 'front');
+    });
+  });
+
+  // Swap button
+  const swapBtn = document.querySelector('.swap-btn[data-scan]');
+  if (swapBtn) swapBtn.addEventListener('click', function () { swapSides(this.dataset.scan); });
+
+  // Add category button
+  const addCatBtn = document.getElementById('addCatBtn');
+  if (addCatBtn) addCatBtn.addEventListener('click', function () { addCat(this.dataset.scan); });
+
+  // Remove category buttons (delegate to handle dynamically added ones)
+  const catTags = document.getElementById('catTags');
+  if (catTags) {
+    catTags.addEventListener('click', function (e) {
+      const btn = e.target.closest('.cat-remove');
+      if (btn) removeCat(btn.dataset.scan, btn.dataset.catId);
+    });
+  }
+});
 </script>
+<script src="{{ url_for('static', filename='afis.js') }}"></script>
 {% endblock %}

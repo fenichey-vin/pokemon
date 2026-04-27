@@ -22,11 +22,19 @@ def search_cards(query):
         timeout=10,
     )
     resp.raise_for_status()
-    data = resp.json()
-    results = []
-    for card in data.get("data", []):
-        results.append(_parse_card(card))
-    return results
+    return [_parse_card(c) for c in resp.json().get("data", [])]
+
+
+def search_cards_q(q, page_size=20):
+    """Search TCG API with a raw query string. Returns list of card dicts."""
+    resp = requests.get(
+        f"{BASE_URL}/cards",
+        params={"q": q, "pageSize": page_size},
+        headers=_headers(),
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return [_parse_card(c) for c in resp.json().get("data", [])]
 
 
 def get_card(card_id):
@@ -56,12 +64,16 @@ def _parse_price(card):
 
 
 def _parse_card(card):
+    tcg_set = card.get("set", {})
     return {
         "tcg_card_id": card.get("id"),
         "card_name": card.get("name"),
-        "set_name": card.get("set", {}).get("name"),
+        "set_name": tcg_set.get("name"),
         "set_number": card.get("number"),
-        "release_date": card.get("set", {}).get("releaseDate"),
+        "set_ptcgo_code": tcg_set.get("ptcgoCode"),
+        "set_total": str(tcg_set.get("total") or ""),
+        "hp": str(card.get("hp") or ""),
+        "release_date": tcg_set.get("releaseDate"),
         "tcg_image_url": card.get("images", {}).get("large"),
         "market_price": _parse_price(card),
     }

@@ -49,15 +49,15 @@
       {% if card.thumbnail %}
         <img class="card-thumb" id="thumb-{{ card.scan_number }}"
              src="{{ card.thumbnail }}" alt="Scan {{ card.scan_number }}" loading="lazy" />
-        <button class="rotate-btn"
-                onclick="rotateThumbnail(event, '{{ card.scan_number }}')"
-                title="Rotate 180°">&#8635;</button>
+        <span class="rotate-btn"
+              role="button"
+              tabindex="0"
+              onclick="rotateThumbnail(event, '{{ card.scan_number }}')"
+              title="Rotate 180°">&#8635;</span>
       {% else %}
         <div class="card-thumb-placeholder">No Image</div>
       {% endif %}
-      <span class="id-badge {% if card.identified %}id-badge-ok{% else %}id-badge-pending{% endif %}">
-        {% if card.identified %}Identified{% else %}Pending ID{% endif %}
-      </span>
+      <span class="id-badge {{ card.status_badge_class }}">{{ card.status_label }}</span>
     </div>
 
     <div class="card-info">

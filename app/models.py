@@ -78,10 +78,27 @@ class Card(db.Model):
     price_fetched_at = db.Column(db.DateTime, nullable=True)
 
     identified = db.Column(db.Boolean, default=False, nullable=False)
+    identification_status = db.Column(db.String(50), nullable=True)
     created_at = db.Column(db.DateTime, default=_utcnow)
     updated_at = db.Column(db.DateTime, default=_utcnow, onupdate=_utcnow)
 
     categories = db.relationship("Category", secondary=card_categories, backref="cards")
+
+    @property
+    def status_label(self):
+        if not self.identified:
+            return "Pending ID"
+        return self.identification_status or "Identified"
+
+    @property
+    def status_badge_class(self):
+        if not self.identified:
+            return "id-badge-pending"
+        if self.identification_status == "Examiner Confirmed":
+            return "id-badge-confirmed"
+        if self.identification_status == "User Updated - Unverified":
+            return "id-badge-warn"
+        return "id-badge-ok"
 
     @property
     def grade_color(self):

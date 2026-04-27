@@ -12,6 +12,7 @@ from PIL import Image
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 SCAN_RE = re.compile(r"^Pokemon_(\d{4})(_b)?\.(jpg|png)$", re.IGNORECASE)
 THUMBS_DIR = "/home/pokemon/app/static/thumbs"
+TEMP_DIR = "/home/pokemon/data/temp"
 
 
 def _get_service():
@@ -20,8 +21,11 @@ def _get_service():
     return build("drive", "v3", credentials=creds)
 
 
-def download_thumbnail(drive_file_id, scan_number):
-    """Download a Drive file, resize to max 300px wide, save as JPEG."""
+def download_thumbnail(drive_file_id, scan_number, side="front"):
+    """Download a Drive file, resize to max 300px wide, save as JPEG.
+
+    side: "front" → <scan_number>.jpg, "back" → <scan_number>_b.jpg
+    """
     service = _get_service()
 
     media_request = service.files().get_media(fileId=drive_file_id)
@@ -41,9 +45,40 @@ def download_thumbnail(drive_file_id, scan_number):
         img = img.resize((max_width, int(img.height * ratio)), Image.LANCZOS)
 
     os.makedirs(THUMBS_DIR, exist_ok=True)
-    dest = os.path.join(THUMBS_DIR, f"{scan_number}.jpg")
+    filename = f"{scan_number}_b.jpg" if side == "back" else f"{scan_number}.jpg"
+    dest = os.path.join(THUMBS_DIR, filename)
     img.save(dest, "JPEG", quality=60, optimize=True)
     return dest
+
+
+def download_full_temp(drive_file_id, scan_number):
+    """Download full-resolution Drive file for OCR. Returns path to temp JPEG."""
+    service = _get_service()
+
+    media_request = service.files().get_media(fileId=drive_file_id)
+    buf = io.BytesIO()
+    downloader = MediaIoBaseDownload(buf, media_request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+
+    buf.seek(0)
+    img = Image.open(buf).convert("RGB")
+    img = img.rotate(180)
+
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    dest = os.path.join(TEMP_DIR, f"{scan_number}.jpg")
+    img.save(dest, "JPEG", quality=95)
+    return dest
+
+
+def delete_temp(scan_number):
+    """Delete the temp full-res file for a scan if it exists."""
+    path = os.path.join(TEMP_DIR, f"{scan_number}.jpg")
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
 
 
 def sync_drive():
@@ -105,10 +140,17 @@ def sync_drive():
                 pass
 
         try:
-            download_thumbnail(front["id"], num)
+            download_thumbnail(front["id"], num, side="front")
         except Exception as e:
             current_app.logger.error("thumbnail download failed for scan %s: %s", num, e)
             thumb_errors += 1
+
+        if back:
+            try:
+                download_thumbnail(back["id"], num, side="back")
+            except Exception as e:
+                current_app.logger.error("back thumbnail download failed for scan %s: %s", num, e)
+                thumb_errors += 1
 
         card = Card(
             scan_number=num,
