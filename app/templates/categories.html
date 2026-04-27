@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Categories — Pokemon Card Catalog{% endblock %}
+
+{% block content %}
+<div class="admin-header">
+  <h2 class="page-title">Categories</h2>
+  <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline btn-sm">&larr; Dashboard</a>
+</div>
+
+<div class="form-section">
+  <h3>New Category</h3>
+  <form method="post" action="{{ url_for('admin.categories') }}">
+    <div class="tcg-search-row">
+      <input type="text" name="name" placeholder="Category name…" class="form-input" required maxlength="100" />
+      <button type="submit" class="btn btn-primary">Create</button>
+    </div>
+  </form>
+</div>
+
+<div class="table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Cards</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cat in categories %}
+      <tr>
+        <td><strong>{{ cat.name }}</strong></td>
+        <td>{{ cat.cards | length }}</td>
+        <td>
+          <form method="post"
+                action="{{ url_for('admin.delete_category', cat_id=cat.id) }}"
+                style="display:inline">
+            <button type="submit" class="btn btn-sm btn-danger"
+                    onclick="return confirm('Delete category \'{{ cat.name }}\'?')">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="empty-cell">No categories yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

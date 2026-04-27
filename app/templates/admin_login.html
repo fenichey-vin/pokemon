@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Login — Pokemon Card Catalog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body class="auth-body">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="logo-ball-lg">&#9711;</span>
+      <h1>Admin Access</h1>
+    </div>
+    <p class="auth-subtitle">Enter the admin password to manage the catalog.</p>
+    {% if error %}
+      <div class="flash flash-error">{{ error }}</div>
+    {% endif %}
+    <form method="post" class="auth-form">
+      <input type="password" name="password" placeholder="Admin password" class="form-input" autofocus required />
+      <button type="submit" class="btn btn-primary btn-full">Unlock Admin</button>
+    </form>
+    <a href="{{ url_for('main.index') }}" class="btn btn-ghost btn-full mt-sm">Back to catalog</a>
+  </div>
+</body>
+</html>

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Access Control — Pokemon Card Catalog{% endblock %}
+
+{% block content %}
+<div class="admin-header">
+  <h2 class="page-title">Access Control</h2>
+  <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline btn-sm">&larr; Dashboard</a>
+</div>
+
+<div class="access-warning">
+  &#9888; Removing your own email will lock you out of the application.
+</div>
+
+{% if not allowed_emails %}
+<div class="access-notice">
+  The allowlist is empty — any email address can currently log in.
+</div>
+{% endif %}
+
+<div class="table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Email</th>
+        <th>Date Added</th>
+        <th>Added By</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ae in allowed_emails %}
+      <tr>
+        <td>
+          {{ ae.email }}
+          {% if ae.email == session.get('user_email') %}
+            <span class="self-badge">you</span>
+          {% endif %}
+        </td>
+        <td>{{ ae.added_at.strftime('%m/%d/%Y') }}</td>
+        <td>{{ ae.added_by or '—' }}</td>
+        <td>
+          {% if ae.email == session.get('user_email') %}
+            <span class="btn btn-sm btn-disabled">Can't remove self</span>
+          {% else %}
+            <form method="post"
+                  action="{{ url_for('admin.access_remove', ae_id=ae.id) }}"
+                  style="display:inline">
+              <button type="submit" class="btn btn-sm btn-danger"
+                      onclick="return confirm('Remove {{ ae.email }} from allowlist?')">
+                Remove
+              </button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="empty-cell">No entries. Anyone can log in.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="form-section access-add-form">
+  <h3>Add Email</h3>
+  <form method="post" action="{{ url_for('admin.access_add') }}">
+    <div class="tcg-search-row">
+      <input type="email" name="email" placeholder="user@example.com"
+             class="form-input" required autocomplete="off" />
+      <button type="submit" class="btn btn-primary">Add Email</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

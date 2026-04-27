@@ -1,0 +1,16 @@
+[Unit]
+Description=Pokemon Card Catalog (Gunicorn)
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/home/pokemon
+EnvironmentFile=/home/pokemon/.env
+ExecStart=/home/pokemon/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:5006 run:app
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

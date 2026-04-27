@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Access Denied — Pokemon Card Catalog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body class="auth-body">
+  <div class="auth-card error-card">
+    <div class="auth-logo">
+      <span class="logo-ball-lg error-ball">&#9711;</span>
+      <h1>Access Denied</h1>
+    </div>
+    <p class="auth-subtitle">
+      The account <strong>{{ email }}</strong> is not authorized to access this catalog.
+    </p>
+    <p class="auth-subtitle">Contact the catalog owner to request access.</p>
+    <a href="{{ url_for('auth.logout') }}" class="btn btn-outline">Sign out</a>
+  </div>
+</body>
+</html>

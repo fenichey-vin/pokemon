@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Catalog — Pokemon Card Catalog{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2 class="page-title">Card Catalog <span class="count-badge">{{ total }}</span></h2>
+</div>
+
+<form method="get" action="{{ url_for('main.index') }}" class="search-bar">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search by name, set, or scan #…"
+         class="form-input search-input" />
+  <select name="grade" class="form-select search-select">
+    <option value="">All Grades</option>
+    <option value="ungraded" {% if grade == 'ungraded' %}selected{% endif %}>Ungraded</option>
+    {% for g in psa_grades %}
+      <option value="{{ g }}" {% if grade == g %}selected{% endif %}>PSA {{ g }}</option>
+    {% endfor %}
+  </select>
+  {% if categories %}
+  <select name="category" class="form-select search-select">
+    <option value="">All Categories</option>
+    {% for cat in categories %}
+      <option value="{{ cat.id }}" {% if category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  <button type="submit" class="btn btn-primary">Search</button>
+  {% if q or grade or category_id %}
+    <a href="{{ url_for('main.index') }}" class="btn btn-ghost">Clear</a>
+  {% endif %}
+</form>
+
+{% if q or grade or category_id %}
+<p class="search-info">
+  {{ total }} result{{ 's' if total != 1 else '' }}
+  {% if q %} for <strong>{{ q }}</strong>{% endif %}
+  {% if grade %} &middot; Grade: <strong>{{ 'Ungraded' if grade == 'ungraded' else 'PSA ' + grade }}</strong>{% endif %}
+  {% if category_id %}
+    {% for cat in categories %}{% if cat.id == category_id %} &middot; Category: <strong>{{ cat.name }}</strong>{% endif %}{% endfor %}
+  {% endif %}
+</p>
+{% endif %}
+
+{% if cards %}
+<div class="card-grid">
+  {% for card in cards %}
+  <a href="{{ url_for('main.card_detail', scan_number=card.scan_number) }}" class="card-tile">
+    <div class="card-thumb-wrap">
+      {% if card.thumbnail %}
+        <img class="card-thumb" id="thumb-{{ card.scan_number }}"
+             src="{{ card.thumbnail }}" alt="Scan {{ card.scan_number }}" loading="lazy" />
+        <button class="rotate-btn"
+                onclick="rotateThumbnail(event, '{{ card.scan_number }}')"
+                title="Rotate 180°">&#8635;</button>
+      {% else %}
+        <div class="card-thumb-placeholder">No Image</div>
+      {% endif %}
+      <span class="id-badge {% if card.identified %}id-badge-ok{% else %}id-badge-pending{% endif %}">
+        {% if card.identified %}Identified{% else %}Pending ID{% endif %}
+      </span>
+    </div>
+
+    <div class="card-info">
+      <div class="card-name">
+        {% if card.card_name %}
+          {{ card.card_name }}
+          {% if card.set_name %}<span class="card-set">{{ card.set_name }}</span>{% endif %}
+        {% else %}
+          <span class="card-unidentified">Unidentified</span>
+        {% endif %}
+      </div>
+
+      <div class="card-meta">
+        <span class="scan-num">#{{ card.scan_number }}</span>
+        {% if card.date_scanned %}
+          <span class="meta-sep">&middot;</span>
+          <span>Scanned {{ card.date_scanned.strftime('%m/%d/%Y') }}</span>
+        {% endif %}
+      </div>
+
+      {% if card.release_date %}
+      <div class="card-meta">
+        <span>Released {{ card.release_date }}</span>
+      </div>
+      {% endif %}
+
+      {% if card.categories %}
+      <div class="card-cats">
+        {% for cat in card.categories %}<span class="cat-chip">{{ cat.name }}</span>{% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="card-footer">
+        <span class="grade-pill grade-{{ card.grade_color }}">
+          {% if card.grade %}PSA {{ card.grade }}{% else %}Ungraded{% endif %}
+        </span>
+        <span class="price-label">
+          {% if card.market_price %}
+            ~${{ "%.2f"|format(card.market_price) }}
+            {% if card.price_fetched_at %}
+              <span class="price-date">as of {{ card.price_fetched_at.strftime('%m/%d/%Y') }}</span>
+            {% endif %}
+          {% else %}
+            <span class="price-na">Price unavailable</span>
+          {% endif %}
+        </span>
+      </div>
+
+      <div class="card-links">
+        {% if card.front_link %}
+          <a href="{{ card.front_link }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Front scan</a>
+        {% endif %}
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+{% if pagination.pages > 1 %}
+<div class="pagination">
+  {% if pagination.has_prev %}
+    <a href="{{ url_for('main.index', page=pagination.prev_num, q=q, grade=grade, category=category_id) }}"
+       class="btn btn-outline btn-sm">&larr; Previous</a>
+  {% else %}
+    <span class="btn btn-outline btn-sm btn-disabled">&larr; Previous</span>
+  {% endif %}
+  <span class="page-info">Page {{ pagination.page }} of {{ pagination.pages }}</span>
+  {% if pagination.has_next %}
+    <a href="{{ url_for('main.index', page=pagination.next_num, q=q, grade=grade, category=category_id) }}"
+       class="btn btn-outline btn-sm">Next &rarr;</a>
+  {% else %}
+    <span class="btn btn-outline btn-sm btn-disabled">Next &rarr;</span>
+  {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+  {% if q or grade or category_id %}
+    <p>No cards match your search.</p>
+    <a href="{{ url_for('main.index') }}" class="btn btn-outline">Clear filters</a>
+  {% else %}
+    <p>No cards in the catalog yet.</p>
+    {% if session.get('is_admin') %}
+      <form method="post" action="{{ url_for('admin.sync') }}">
+        <button type="submit" class="btn btn-primary">Sync from Google Drive</button>
+      </form>
+    {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
+<script>
+async function rotateThumbnail(e, scanNum) {
+  e.preventDefault();
+  e.stopPropagation();
+  const btn = e.currentTarget;
+  btn.classList.add('rotating');
+  try {
+    const resp = await fetch('/card/' + scanNum + '/rotate', {method: 'POST'});
+    if (resp.ok) {
+      const img = document.getElementById('thumb-' + scanNum);
+      if (img) {
+        const url = new URL(img.src, location.href);
+        url.searchParams.set('t', Date.now());
+        img.src = url.toString();
+      }
+    }
+  } finally {
+    btn.classList.remove('rotating');
+  }
+}
+</script>
+{% endblock %}

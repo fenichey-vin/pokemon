@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Pokemon Card Catalog{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="{{ url_for('main.index') }}" class="site-logo">
+        <span class="logo-ball">&#9711;</span>
+        Pokemon Card Catalog
+      </a>
+      <nav class="header-nav">
+        {% if session.get('user_email') %}
+          <span class="nav-user">{{ session.get('user_name', session.get('user_email')) }}</span>
+          {% if session.get('is_admin') %}
+            <a href="{{ url_for('admin.admin_dashboard') }}" class="nav-link nav-admin">Admin</a>
+            <a href="{{ url_for('admin.access_control') }}" class="nav-link">Access Control</a>
+            <a href="{{ url_for('admin.admin_logout') }}" class="nav-link">Exit Admin</a>
+          {% else %}
+            <a href="{{ url_for('admin.admin_login') }}" class="nav-link">Admin Login</a>
+          {% endif %}
+          <a href="{{ url_for('auth.logout') }}" class="nav-link">Logout</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-container">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

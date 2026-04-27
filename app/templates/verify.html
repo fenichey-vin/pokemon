@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verify — Pokemon Card Catalog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body class="auth-body">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="logo-ball-lg">&#9711;</span>
+      <h1>Check your email</h1>
+    </div>
+    <p class="auth-subtitle">We sent a 6-digit code to <strong>{{ email }}</strong></p>
+
+    {% if error %}
+      <div class="auth-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('auth.verify', email=email) }}" class="auth-form">
+      <input type="text" name="code" placeholder="000000"
+             class="form-input code-input"
+             inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+             required autofocus autocomplete="one-time-code" />
+      <button type="submit" class="btn btn-primary btn-full">Verify Code</button>
+    </form>
+
+    <p class="auth-footer">
+      Wrong email? <a href="{{ url_for('auth.login') }}">Try again</a>
+    </p>
+  </div>
+</body>
+</html>

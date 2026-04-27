@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}{{ card.card_name or 'Card #' + card.scan_number }} — Pokemon Card Catalog{% endblock %}
+
+{% block content %}
+<div class="detail-header">
+  <a href="{{ url_for('main.index') }}" class="back-link">&larr; Back to catalog</a>
+  <div class="detail-header-right">
+    <span class="id-badge {% if card.identified %}id-badge-ok{% else %}id-badge-pending{% endif %} id-badge-lg">
+      {% if card.identified %}Identified{% else %}Pending ID{% endif %}
+    </span>
+    {% if is_admin %}
+      <a href="{{ url_for('admin.edit_card', scan_number=card.scan_number) }}" class="btn btn-primary btn-sm">Edit Card</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="detail-layout">
+  <div class="detail-images">
+    <div class="detail-image-group">
+      {% if card.thumbnail %}
+        <div class="detail-img-wrap">
+          <img src="{{ card.thumbnail }}" id="front-img-{{ card.scan_number }}"
+               alt="Front — Scan {{ card.scan_number }}" class="detail-img" />
+          <button class="rotate-btn"
+                  onclick="rotateFront('{{ card.scan_number }}')"
+                  title="Rotate 180°">&#8635;</button>
+          <div class="detail-img-label">Front</div>
+          {% if card.front_link %}
+            <a href="{{ card.front_link }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm mt-sm">
+              View full scan
+            </a>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {% if card.back_thumbnail %}
+        <div class="detail-img-wrap">
+          <img src="{{ card.back_thumbnail }}" alt="Back — Scan {{ card.scan_number }}" class="detail-img" />
+          <div class="detail-img-label">Back</div>
+          {% if card.back_link %}
+            <a href="{{ card.back_link }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm mt-sm">
+              View full scan
+            </a>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if card.tcg_image_url %}
+      <div class="detail-tcg-wrap">
+        <img src="{{ card.tcg_image_url }}" alt="TCG reference image" class="detail-tcg-img" />
+        <div class="detail-img-label">TCG Reference</div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="detail-meta">
+    <h1 class="detail-title">
+      {% if card.card_name %}{{ card.card_name }}{% else %}Unidentified Card{% endif %}
+    </h1>
+
+    <dl class="meta-list">
+      <dt>Scan Number</dt>
+      <dd>#{{ card.scan_number }}</dd>
+
+      {% if card.set_name %}
+      <dt>Set</dt>
+      <dd>{{ card.set_name }}{% if card.set_number %} — #{{ card.set_number }}{% endif %}</dd>
+      {% endif %}
+
+      {% if card.release_date %}
+      <dt>Release Date</dt>
+      <dd>{{ card.release_date }}</dd>
+      {% endif %}
+
+      {% if card.date_scanned %}
+      <dt>Date Scanned</dt>
+      <dd>{{ card.date_scanned.strftime('%B %d, %Y') }}</dd>
+      {% endif %}
+
+      {% if card.tcg_card_id %}
+      <dt>TCG Card ID</dt>
+      <dd><code>{{ card.tcg_card_id }}</code></dd>
+      {% endif %}
+
+      <dt>Grade</dt>
+      <dd>
+        <span class="grade-pill grade-{{ card.grade_color }} grade-pill-lg">
+          {% if card.grade %}PSA {{ card.grade }}{% else %}Ungraded{% endif %}
+        </span>
+        {% if card.grade_notes %}
+          <p class="grade-notes">{{ card.grade_notes }}</p>
+        {% endif %}
+      </dd>
+
+      <dt>Market Value</dt>
+      <dd>
+        {% if card.market_price %}
+          <span class="price-value">${{ "%.2f"|format(card.market_price) }}</span>
+          {% if card.price_fetched_at %}
+            <span class="price-date">as of {{ card.price_fetched_at.strftime('%m/%d/%Y') }}</span>
+          {% endif %}
+        {% else %}
+          <span class="price-na">Price unavailable</span>
+        {% endif %}
+      </dd>
+    </dl>
+
+    <div class="detail-actions">
+      {% if card.front_link %}
+        <a href="{{ card.front_link }}" target="_blank" rel="noopener" class="btn btn-outline">
+          View front scan (600 DPI)
+        </a>
+      {% endif %}
+      {% if card.back_link %}
+        <a href="{{ card.back_link }}" target="_blank" rel="noopener" class="btn btn-outline">
+          View back scan (600 DPI)
+        </a>
+      {% endif %}
+    </div>
+
+    <div class="category-section">
+      <h3>Categories</h3>
+      <div class="category-tags" id="catTags">
+        {% for cat in card.categories %}
+          <span class="cat-tag" id="cat-tag-{{ cat.id }}" data-name="{{ cat.name }}">
+            {{ cat.name }}
+            <button class="cat-remove" onclick="removeCat('{{ card.scan_number }}', {{ cat.id }})"
+                    title="Remove">&times;</button>
+          </span>
+        {% else %}
+          <span class="cat-none" id="catNone">No categories</span>
+        {% endfor %}
+      </div>
+      {% set assigned_ids = card.categories | map(attribute='id') | list %}
+      <div class="category-add-row">
+        <select id="catAddSelect" class="form-select" style="max-width:220px">
+          <option value="">Add category…</option>
+          {% for cat in all_categories %}
+            {% if cat.id not in assigned_ids %}
+              <option value="{{ cat.id }}">{{ cat.name }}</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+        <button class="btn btn-sm btn-secondary" onclick="addCat('{{ card.scan_number }}')">Add</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function rotateFront(scanNum) {
+  const resp = await fetch('/card/' + scanNum + '/rotate', {method: 'POST'});
+  if (resp.ok) {
+    const img = document.getElementById('front-img-' + scanNum);
+    if (img) {
+      const url = new URL(img.src, location.href);
+      url.searchParams.set('t', Date.now());
+      img.src = url.toString();
+    }
+  }
+}
+
+async function addCat(scanNum) {
+  const sel = document.getElementById('catAddSelect');
+  const catId = parseInt(sel.value);
+  if (!catId) return;
+  const resp = await fetch('/card/' + scanNum + '/categories', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({category_id: catId}),
+  });
+  if (resp.ok) {
+    const data = await resp.json();
+    const tags = document.getElementById('catTags');
+    const none = document.getElementById('catNone');
+    if (none) none.remove();
+    const span = document.createElement('span');
+    span.className = 'cat-tag';
+    span.id = 'cat-tag-' + data.category.id;
+    span.dataset.name = data.category.name;
+    span.innerHTML = escHtml(data.category.name) +
+      ` <button class="cat-remove" onclick="removeCat('${scanNum}', ${data.category.id})" title="Remove">&times;</button>`;
+    tags.appendChild(span);
+    sel.remove(sel.selectedIndex);
+    sel.value = '';
+  }
+}
+
+async function removeCat(scanNum, catId) {
+  const tag = document.getElementById('cat-tag-' + catId);
+  const name = tag ? tag.dataset.name : '';
+  const resp = await fetch('/card/' + scanNum + '/categories/' + catId, {method: 'DELETE'});
+  if (resp.ok) {
+    if (tag) tag.remove();
+    const sel = document.getElementById('catAddSelect');
+    if (sel && name) {
+      const opt = document.createElement('option');
+      opt.value = catId;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    }
+    const tags = document.getElementById('catTags');
+    if (tags && !tags.querySelector('.cat-tag')) {
+      const none = document.createElement('span');
+      none.className = 'cat-none';
+      none.id = 'catNone';
+      none.textContent = 'No categories';
+      tags.appendChild(none);
+    }
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+{% endblock %}

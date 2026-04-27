@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+{% block title %}Admin — Pokemon Card Catalog{% endblock %}
+
+{% block content %}
+<div class="admin-header">
+  <h2 class="page-title">Admin Dashboard</h2>
+  <div class="admin-actions">
+    <form method="post" action="{{ url_for('admin.sync') }}" style="display:inline">
+      <button type="submit" class="btn btn-primary" onclick="return confirm('Sync from Google Drive?')">
+        Sync Drive
+      </button>
+    </form>
+    <form method="post" action="{{ url_for('admin.refresh_prices') }}" style="display:inline">
+      <button type="submit" class="btn btn-secondary" onclick="return confirm('Refresh all prices from TCG API?')">
+        Refresh Prices
+      </button>
+    </form>
+    <button type="button" class="btn btn-secondary" id="btnIdentify" onclick="startTask('identify')">
+      Identify All Cards
+    </button>
+    <button type="button" class="btn btn-secondary" id="btnPrices" onclick="startTask('prices')">
+      Fetch Prices
+    </button>
+    <a href="{{ url_for('admin.categories') }}" class="btn btn-outline btn-sm">Manage Categories</a>
+  </div>
+</div>
+
+<div id="taskStatus" style="display:none" class="task-status-bar">
+  <span id="taskStatusText"></span>
+</div>
+
+<div class="tab-bar">
+  <a href="{{ url_for('admin.admin_dashboard', tab='all', q=q, grade=grade, category=category_id) }}"
+     class="tab {% if tab == 'all' %}tab-active{% endif %}">All Cards</a>
+  <a href="{{ url_for('admin.admin_dashboard', tab='pending', q=q, grade=grade, category=category_id) }}"
+     class="tab {% if tab == 'pending' %}tab-active{% endif %}">Pending ID</a>
+</div>
+
+<form method="get" action="{{ url_for('admin.admin_dashboard') }}" class="search-bar">
+  <input type="hidden" name="tab" value="{{ tab }}" />
+  <input type="text" name="q" value="{{ q }}" placeholder="Search cards…" class="form-input search-input" />
+  <select name="grade" class="form-select search-select">
+    <option value="">All Grades</option>
+    <option value="ungraded" {% if grade == 'ungraded' %}selected{% endif %}>Ungraded</option>
+    {% for g in psa_grades %}
+      <option value="{{ g }}" {% if grade == g %}selected{% endif %}>PSA {{ g }}</option>
+    {% endfor %}
+  </select>
+  {% if categories %}
+  <select name="category" class="form-select search-select">
+    <option value="">All Categories</option>
+    {% for cat in categories %}
+      <option value="{{ cat.id }}" {% if category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  <button type="submit" class="btn btn-primary">Search</button>
+  {% if q or grade or category_id %}
+    <a href="{{ url_for('admin.admin_dashboard', tab=tab) }}" class="btn btn-ghost">Clear</a>
+  {% endif %}
+</form>
+
+<!-- TCG Search Panel -->
+<div class="tcg-search-panel">
+  <h3>TCG Card Search</h3>
+  <div class="tcg-search-row">
+    <input type="text" id="tcgQuery" placeholder="Search by card name..." class="form-input" />
+    <button type="button" class="btn btn-primary" onclick="tcgSearch()">Search</button>
+  </div>
+  <div id="tcgResults" class="tcg-results"></div>
+</div>
+
+<div class="table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Scan</th>
+        <th>Thumb</th>
+        <th>Card Name</th>
+        <th>Set</th>
+        <th>Grade</th>
+        <th>Price</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for card in cards %}
+      <tr id="card-row-{{ card.scan_number }}">
+        <td><strong>#{{ card.scan_number }}</strong></td>
+        <td>
+          {% if card.thumbnail %}
+            <img src="{{ card.thumbnail }}" alt="" class="admin-thumb" />
+          {% endif %}
+        </td>
+        <td>{{ card.card_name or '—' }}</td>
+        <td>{{ card.set_name or '—' }}</td>
+        <td>
+          <span class="grade-pill grade-{{ card.grade_color }}">
+            {% if card.grade %}PSA {{ card.grade }}{% else %}—{% endif %}
+          </span>
+        </td>
+        <td>
+          {% if card.market_price %}${{ "%.2f"|format(card.market_price) }}{% else %}—{% endif %}
+        </td>
+        <td>
+          <span class="id-badge {% if card.identified %}id-badge-ok{% else %}id-badge-pending{% endif %}">
+            {% if card.identified %}ID'd{% else %}Pending{% endif %}
+          </span>
+        </td>
+        <td class="action-cell">
+          <a href="{{ url_for('admin.edit_card', scan_number=card.scan_number) }}" class="btn btn-sm btn-outline">Edit</a>
+          <button class="btn btn-sm btn-secondary"
+                  onclick="openIdentify('{{ card.scan_number }}')">Identify</button>
+          <form method="post" action="{{ url_for('admin.delete_card', scan_number=card.scan_number) }}" style="display:inline">
+            <button type="submit" class="btn btn-sm btn-danger"
+                    onclick="return confirm('Delete card #{{ card.scan_number }}?')">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty-cell">No cards found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Identify Modal -->
+<div id="identifyModal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Identify Card <span id="modalScanNum"></span></h3>
+      <button class="modal-close" onclick="closeIdentify()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="tcg-search-row">
+        <input type="text" id="modalQuery" placeholder="Card name..." class="form-input" />
+        <button type="button" class="btn btn-primary" onclick="modalSearch()">Search</button>
+      </div>
+      <div id="modalResults" class="tcg-results"></div>
+      <form id="identifyForm" method="post" action="">
+        <input type="hidden" name="tcg_card_id" id="identifyCardId" />
+        <div id="selectedCard" class="selected-card" style="display:none">
+          <strong>Selected: </strong><span id="selectedCardName"></span>
+          <button type="submit" class="btn btn-primary btn-sm ml-sm">Assign</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentScanNumber = null;
+
+function openIdentify(scanNum) {
+  currentScanNumber = scanNum;
+  document.getElementById('modalScanNum').textContent = '#' + scanNum;
+  document.getElementById('identifyForm').action = '/admin/card/' + scanNum + '/identify';
+  document.getElementById('modalResults').innerHTML = '';
+  document.getElementById('selectedCard').style.display = 'none';
+  document.getElementById('modalQuery').value = '';
+  document.getElementById('identifyModal').style.display = 'flex';
+  document.getElementById('modalQuery').focus();
+}
+
+function closeIdentify() {
+  document.getElementById('identifyModal').style.display = 'none';
+}
+
+document.getElementById('identifyModal').addEventListener('click', function(e) {
+  if (e.target === this) closeIdentify();
+});
+
+document.getElementById('modalQuery').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); modalSearch(); }
+});
+
+async function modalSearch() {
+  const q = document.getElementById('modalQuery').value.trim();
+  if (!q) return;
+  const res = await fetch('/api/tcg/search?q=' + encodeURIComponent(q));
+  const data = await res.json();
+  renderResults(data.results || [], 'modalResults', true);
+}
+
+async function tcgSearch() {
+  const q = document.getElementById('tcgQuery').value.trim();
+  if (!q) return;
+  const res = await fetch('/api/tcg/search?q=' + encodeURIComponent(q));
+  const data = await res.json();
+  renderResults(data.results || [], 'tcgResults', false);
+}
+
+document.getElementById('tcgQuery').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); tcgSearch(); }
+});
+
+function renderResults(results, containerId, forIdentify) {
+  const container = document.getElementById(containerId);
+  if (!results.length) {
+    container.innerHTML = '<p class="no-results">No results found.</p>';
+    return;
+  }
+  container.innerHTML = results.map(r => `
+    <div class="tcg-result-item" ${forIdentify ? `onclick="selectCard('${r.tcg_card_id}', '${escHtml(r.card_name)} — ${escHtml(r.set_name || '')}')"` : ''}>
+      ${r.tcg_image_url ? `<img src="${r.tcg_image_url}" class="tcg-result-img" alt="" />` : ''}
+      <div class="tcg-result-info">
+        <strong>${escHtml(r.card_name)}</strong><br/>
+        <small>${escHtml(r.set_name || '')} #${escHtml(r.set_number || '')}</small><br/>
+        <small>${r.market_price ? '$' + r.market_price.toFixed(2) : 'No price'}</small>
+      </div>
+      ${forIdentify ? '<span class="select-hint">Click to select</span>' : ''}
+    </div>
+  `).join('');
+}
+
+function selectCard(id, name) {
+  document.getElementById('identifyCardId').value = id;
+  document.getElementById('selectedCardName').textContent = name;
+  document.getElementById('selectedCard').style.display = 'block';
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Background task runner ──────────────────────────────────────────────────
+
+let _pollTimer = null;
+
+async function startTask(type) {
+  const url = type === 'identify' ? '/admin/identify-cards' : '/admin/fetch-prices';
+  const btn = document.getElementById(type === 'identify' ? 'btnIdentify' : 'btnPrices');
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch(url, {method: 'POST'});
+    if (resp.status === 409) {
+      showStatus(type, {status: 'running', done: 0, total: 0, errors: 0});
+    } else if (!resp.ok) {
+      alert('Failed to start task.');
+      btn.disabled = false;
+      return;
+    }
+    startPolling();
+  } catch (e) {
+    alert('Request failed: ' + e);
+    btn.disabled = false;
+  }
+}
+
+function startPolling() {
+  if (_pollTimer) return;
+  _pollTimer = setInterval(pollStatus, 3000);
+  pollStatus();
+}
+
+async function pollStatus() {
+  try {
+    const resp = await fetch('/admin/task-status');
+    const data = await resp.json();
+    const lines = [];
+
+    if (data.identify) {
+      lines.push(formatTask('Identify', data.identify));
+      if (data.identify.status === 'done') {
+        document.getElementById('btnIdentify').disabled = false;
+      }
+    }
+    if (data.prices) {
+      lines.push(formatTask('Prices', data.prices));
+      if (data.prices.status === 'done') {
+        document.getElementById('btnPrices').disabled = false;
+      }
+    }
+
+    if (lines.length) {
+      document.getElementById('taskStatus').style.display = 'block';
+      document.getElementById('taskStatusText').textContent = lines.join('   |   ');
+    }
+
+    const anyRunning = (data.identify && data.identify.status === 'running') ||
+                       (data.prices && data.prices.status === 'running');
+    if (!anyRunning && _pollTimer) {
+      clearInterval(_pollTimer);
+      _pollTimer = null;
+    }
+  } catch (e) {
+    // ignore transient errors
+  }
+}
+
+function formatTask(label, t) {
+  if (t.status === 'running') {
+    const pct = t.total > 0 ? Math.round(100 * t.done / t.total) : 0;
+    return `${label}: ${t.done}/${t.total} (${pct}%)${t.errors ? ' ⚠ ' + t.errors + ' err' : ''}`;
+  }
+  return `${label}: done — ${t.done} processed${t.errors ? ', ' + t.errors + ' errors' : ''}`;
+}
+</script>
+{% endblock %}
