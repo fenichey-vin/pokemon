@@ -29,6 +29,28 @@ _OCR_PROMPT = (
     "}"
 )
 
+_REVERSE_HOLO_SYSTEM = "You are a Pokemon card grading expert examining card scans."
+
+_REVERSE_HOLO_PROMPT = (
+    "Look carefully at this Pokemon card scan. Determine if this is "
+    "a REVERSE HOLO variant.\n\n"
+    "In a reverse holo card:\n"
+    "- The artwork/illustration area is FLAT/MATTE (no sparkle)\n"
+    "- The BORDER, text areas, and card background OUTSIDE the art box "
+    "have a holographic sparkle/rainbow shimmer pattern\n"
+    "- This is the OPPOSITE of a regular holo card where only the art sparkles\n\n"
+    "In a normal non-holo card:\n"
+    "- Everything is flat/matte\n\n"
+    "In a regular holo card:\n"
+    "- Only the artwork area sparkles\n\n"
+    "Respond JSON only:\n"
+    "{\n"
+    '  "is_reverse_holo": true/false,\n'
+    '  "confidence": "high/medium/low",\n'
+    '  "reasoning": "one sentence explanation"\n'
+    "}"
+)
+
 
 def ocr_card(scan_number):
     """Run Claude OCR on the card image.
@@ -88,6 +110,77 @@ def ocr_card(scan_number):
             return json.loads(raw)
         except json.JSONDecodeError:
             current_app.logger.warning("OCR JSON parse failed for %s: %s", scan_number, raw[:120])
+            return None
+
+    finally:
+        if used_temp:
+            delete_temp(scan_number)
+
+
+def detect_reverse_holo(scan_number):
+    """Run Claude reverse holo detection on the card image.
+
+    Downloads full-res or falls back to thumbnail.
+    Returns dict with is_reverse_holo, confidence, reasoning — or None on failure.
+    """
+    from app.models import Card
+    from app.services.drive import download_full_temp, delete_temp
+
+    img_path = None
+    used_temp = False
+
+    card = Card.query.filter_by(scan_number=scan_number).first()
+    if card and card.drive_file_id_front:
+        try:
+            img_path = download_full_temp(card.drive_file_id_front, scan_number)
+            used_temp = True
+        except Exception as e:
+            current_app.logger.warning(
+                "Full-res download failed for %s RH detection: %s", scan_number, e
+            )
+
+    if img_path is None:
+        thumb_path = os.path.join(THUMBS_DIR, f"{scan_number}.jpg")
+        if not os.path.exists(thumb_path):
+            return None
+        img_path = thumb_path
+
+    try:
+        with open(img_path, "rb") as fh:
+            image_b64 = base64.standard_b64encode(fh.read()).decode()
+
+        client = anthropic.Anthropic(api_key=current_app.config["ANTHROPIC_API_KEY"])
+        response = client.messages.create(
+            model=_MODEL,
+            max_tokens=256,
+            system=_REVERSE_HOLO_SYSTEM,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": "image/jpeg", "data": image_b64},
+                    },
+                    {"type": "text", "text": _REVERSE_HOLO_PROMPT},
+                ],
+            }],
+        )
+
+        raw = response.content[0].text.strip()
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+
+        try:
+            parsed = json.loads(raw)
+            return {
+                "is_reverse_holo": bool(parsed.get("is_reverse_holo", False)),
+                "confidence": str(parsed.get("confidence", "low")),
+                "reasoning": str(parsed.get("reasoning", "")),
+            }
+        except json.JSONDecodeError:
+            current_app.logger.warning(
+                "Reverse holo JSON parse failed for %s: %s", scan_number, raw[:120]
+            )
             return None
 
     finally:
@@ -262,6 +355,15 @@ def identify_card(scan_number):
 
     match, score = best_match(ocr)
 
+    rh_result = None
+    try:
+        rh_result = detect_reverse_holo(scan_number)
+        if rh_result:
+            card.is_reverse_holo = rh_result["is_reverse_holo"]
+            card.reverse_holo_confirmed = False
+    except Exception as e:
+        current_app.logger.warning("RH detection failed for %s: %s", scan_number, e)
+
     if match and score >= 3:
         try:
             full = get_card(match["tcg_card_id"])
@@ -283,7 +385,13 @@ def identify_card(scan_number):
             "score": score,
             "identification_status": "AI Identified",
             "ocr": ocr,
+            "reverse_holo": rh_result,
         }
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
     return {
         "scan_number": scan_number,
@@ -294,4 +402,5 @@ def identify_card(scan_number):
         "matched": False,
         "score": score,
         "ocr": ocr,
+        "reverse_holo": rh_result,
     }

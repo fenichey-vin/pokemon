@@ -37,7 +37,7 @@ def search_cards_q(q, page_size=20):
     return [_parse_card(c) for c in resp.json().get("data", [])]
 
 
-def get_card(card_id):
+def get_card(card_id, prefer_reverse=False):
     """Fetch a single card by TCG ID."""
     resp = requests.get(
         f"{BASE_URL}/cards/{card_id}",
@@ -45,12 +45,16 @@ def get_card(card_id):
         timeout=10,
     )
     resp.raise_for_status()
-    return _parse_card(resp.json().get("data", {}))
+    return _parse_card(resp.json().get("data", {}), prefer_reverse=prefer_reverse)
 
 
-def _parse_price(card):
+def _parse_price(card, prefer_reverse=False):
     prices = card.get("tcgplayer", {}).get("prices", {})
-    for tier in ("holofoil", "reverseHolofoil", "normal", "1stEditionHolofoil"):
+    if prefer_reverse:
+        tier_order = ("reverseHolofoil", "holofoil", "normal", "1stEditionHolofoil")
+    else:
+        tier_order = ("holofoil", "reverseHolofoil", "normal", "1stEditionHolofoil")
+    for tier in tier_order:
         p = prices.get(tier, {})
         mid = p.get("mid") or p.get("market")
         if mid:
@@ -63,7 +67,7 @@ def _parse_price(card):
     return None
 
 
-def _parse_card(card):
+def _parse_card(card, prefer_reverse=False):
     tcg_set = card.get("set", {})
     return {
         "tcg_card_id": card.get("id"),
@@ -75,7 +79,7 @@ def _parse_card(card):
         "hp": str(card.get("hp") or ""),
         "release_date": tcg_set.get("releaseDate"),
         "tcg_image_url": card.get("images", {}).get("large"),
-        "market_price": _parse_price(card),
+        "market_price": _parse_price(card, prefer_reverse=prefer_reverse),
     }
 
 
@@ -104,7 +108,7 @@ def refresh_all_prices():
         if not card.tcg_card_id:
             continue
         try:
-            data = get_card(card.tcg_card_id)
+            data = get_card(card.tcg_card_id, prefer_reverse=getattr(card, "is_reverse_holo", False))
             if data["market_price"] is not None:
                 card.market_price = data["market_price"]
                 card.price_fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)

@@ -22,7 +22,10 @@ def fetch_price(card):
     if price is None and card.tcg_card_id:
         from app.services.tcg import get_card
         try:
-            data = get_card(card.tcg_card_id)
+            data = get_card(
+                card.tcg_card_id,
+                prefer_reverse=getattr(card, "is_reverse_holo", False),
+            )
             price = data.get("market_price")
         except Exception:
             pass

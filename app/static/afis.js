@@ -52,6 +52,23 @@ function featureRow(key, val) {
     + ':</span> <span class="afis-fv">' + val + '</span></div>';
 }
 
+function rhSectionHTML(rh, scanNum) {
+  if (!rh) return '';
+  const isRH = rh.is_reverse_holo;
+  const conf = (rh.confidence || 'low').toUpperCase();
+  const valHtml = isRH
+    ? '<span style="color:#d69e2e">&#x2726; YES</span>&nbsp;<span style="color:#d69e2e">(' + conf + ' confidence)</span>'
+    : '<span style="color:#718096">&#x2717; NO</span>&nbsp;<span style="color:#718096">(' + conf + ' confidence)</span>';
+  return '<div class="afis-rh-section">'
+    + '<div class="afis-feature"><span class="afis-fk">REVERSE HOLO:</span> <span class="afis-fv">' + valHtml + '</span></div>'
+    + (rh.reasoning ? '<div class="afis-rh-reasoning">' + escHtml(rh.reasoning) + '</div>' : '')
+    + '<div class="afis-rh-btns">'
+    + '<button class="btn-rh-confirm" data-scan="' + escHtml(scanNum) + '" data-is-rh="1">&#x2726; CONFIRM REVERSE HOLO</button>'
+    + '<button class="btn-rh-normal" data-scan="' + escHtml(scanNum) + '" data-is-rh="0">&#x2717; CONFIRM NORMAL</button>'
+    + '</div>'
+    + '</div>';
+}
+
 function renderWorkspace(data, scanNum) {
   const ocr = data.ocr || {};
   const confLvl = (ocr.confidence || 'low').toLowerCase();
@@ -63,6 +80,7 @@ function renderWorkspace(data, scanNum) {
     '<div class="afis-feature"><span class="afis-fk">CONFIDENCE:</span> '
       + '<span class="afis-conf-badge conf-' + confLvl + '">'
       + confLvl.toUpperCase() + '</span></div>',
+    rhSectionHTML(data.reverse_holo, scanNum),
   ].join('');
 
   const candidates = data.candidates || [];
@@ -139,6 +157,26 @@ function hitCardHTML(c, rank, scanNum) {
     + '</div>';
 }
 
+async function setReverseHolo(scanNum, isRH, btn) {
+  btn.disabled = true;
+  const origText = btn.textContent;
+  btn.textContent = 'SAVING…';
+  try {
+    const resp = await fetch('/card/' + scanNum + '/set-reverse-holo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_reverse_holo: isRH }),
+    });
+    if (!resp.ok) throw new Error('Server error');
+    btn.textContent = '✓ SAVED';
+    const wrap = btn.closest('.afis-rh-btns');
+    if (wrap) wrap.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+}
+
 async function confirmMatch(scanNum, tcgCardId, btn) {
   btn.disabled = true;
   btn.textContent = 'CONFIRMING…';
@@ -173,6 +211,17 @@ document.addEventListener('DOMContentLoaded', function () {
       const btn = e.target.closest('.btn-confirm');
       if (btn && !btn.disabled) {
         confirmMatch(btn.dataset.scan, btn.dataset.tcgId, btn);
+      }
+    });
+  }
+
+  // Event delegation for reverse holo confirm buttons
+  const featuresList = document.getElementById('afisFeaturesList');
+  if (featuresList) {
+    featuresList.addEventListener('click', function (e) {
+      const btn = e.target.closest('.btn-rh-confirm, .btn-rh-normal');
+      if (btn && !btn.disabled) {
+        setReverseHolo(btn.dataset.scan, btn.dataset.isRh === '1', btn);
       }
     });
   }

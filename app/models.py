@@ -77,6 +77,9 @@ class Card(db.Model):
     market_price = db.Column(db.Float, nullable=True)
     price_fetched_at = db.Column(db.DateTime, nullable=True)
 
+    is_reverse_holo = db.Column(db.Boolean, default=False, nullable=False)
+    reverse_holo_confirmed = db.Column(db.Boolean, default=False, nullable=False)
+
     identified = db.Column(db.Boolean, default=False, nullable=False)
     identification_status = db.Column(db.String(50), nullable=True)
     created_at = db.Column(db.DateTime, default=_utcnow)

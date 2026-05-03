@@ -193,7 +193,7 @@ def identify_manual(scan_number):
 @login_required
 def find_matches(scan_number):
     from flask import current_app
-    from app.services.identify import ocr_card, card_num_stripped, score_result_with_reasons
+    from app.services.identify import ocr_card, card_num_stripped, score_result_with_reasons, detect_reverse_holo
     from app.services.tcg import search_cards_q
 
     Card.query.filter_by(scan_number=scan_number).first_or_404()
@@ -206,6 +206,12 @@ def find_matches(scan_number):
 
     if not ocr:
         return jsonify({"error": "OCR failed — no image or Drive access unavailable"}), 422
+
+    rh_result = None
+    try:
+        rh_result = detect_reverse_holo(scan_number)
+    except Exception as e:
+        current_app.logger.warning("RH detection failed for %s: %s", scan_number, e)
 
     card_name = (ocr.get("card_name") or "").strip()
     card_number_raw = (ocr.get("card_number") or "").strip()
@@ -262,6 +268,7 @@ def find_matches(scan_number):
             "set_code": set_code,
             "confidence": ocr.get("confidence", "low"),
         },
+        "reverse_holo": rh_result,
         "candidates": candidates[:10],
     })
 
@@ -288,6 +295,20 @@ def confirm_match(scan_number):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+    return jsonify({"success": True})
+
+
+@main_bp.route("/card/<scan_number>/set-reverse-holo", methods=["POST"])
+@login_required
+def set_reverse_holo(scan_number):
+    card = Card.query.filter_by(scan_number=scan_number).first_or_404()
+    data = request.get_json(silent=True) or {}
+    is_rh = data.get("is_reverse_holo")
+    if is_rh is None:
+        return jsonify({"error": "Missing is_reverse_holo"}), 400
+    card.is_reverse_holo = bool(is_rh)
+    card.reverse_holo_confirmed = True
+    db.session.commit()
     return jsonify({"success": True})
 
 

@@ -63,10 +63,10 @@
     <div class="card-info">
       <div class="card-name">
         {% if card.card_name %}
-          {{ card.card_name }}
+          {{ card.card_name }}{% if card.is_reverse_holo %}&nbsp;<span class="rh-badge">&#x2726; RH</span>{% endif %}
           {% if card.set_name %}<span class="card-set">{{ card.set_name }}</span>{% endif %}
         {% else %}
-          <span class="card-unidentified">Unidentified</span>
+          <span class="card-unidentified">Unidentified</span>{% if card.is_reverse_holo %}&nbsp;<span class="rh-badge">&#x2726; RH</span>{% endif %}
         {% endif %}
       </div>
 

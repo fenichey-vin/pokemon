@@ -51,6 +51,22 @@ def create_app():
                     ))
                     conn.commit()
 
+        # Add reverse holo columns if upgrading from earlier schema
+        if "cards" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("cards")]
+            if "is_reverse_holo" not in cols:
+                with db.engine.connect() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE cards ADD COLUMN is_reverse_holo BOOLEAN NOT NULL DEFAULT 0"
+                    ))
+                    conn.commit()
+            if "reverse_holo_confirmed" not in cols:
+                with db.engine.connect() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE cards ADD COLUMN reverse_holo_confirmed BOOLEAN NOT NULL DEFAULT 0"
+                    ))
+                    conn.commit()
+
         # Seed AllowedEmail from ALLOWED_EMAILS config if table is empty (one-time migration)
         from app.models import AllowedEmail
         if AllowedEmail.query.count() == 0:
@@ -131,17 +147,24 @@ def create_app():
                         f"number: {ocr.get('card_number') or '?'}, "
                         f"set: {ocr.get('set_code') or '?'}"
                     )
+                    rh = result.get("reverse_holo") or {}
+                    rh_str = ""
+                    if rh:
+                        rh_status = "YES" if rh.get("is_reverse_holo") else "NO"
+                        rh_conf = rh.get("confidence", "?")
+                        rh_str = f" | REVERSE HOLO: {rh_status} ({rh_conf})"
+
                     if result.get("matched"):
                         print(
                             f"  #{card.scan_number}: OCR={{{ocr_summary}}} → "
-                            f"MATCHED {result['tcg_card_id']} (score={result['score']})"
+                            f"MATCHED {result['tcg_card_id']} (score={result['score']}){rh_str}"
                         )
                         matched += 1
                     else:
                         err = result.get("error", "score too low")
                         print(
                             f"  #{card.scan_number}: OCR={{{ocr_summary}}} → "
-                            f"NO MATCH (score={result.get('score', 0)}, {err})"
+                            f"NO MATCH (score={result.get('score', 0)}, {err}){rh_str}"
                         )
                     ok += 1
                 except Exception as e:

@@ -161,6 +161,20 @@
         {% endif %}
       </dd>
 
+      <dt>Reverse Holo</dt>
+      <dd class="rh-detail-row">
+        {% if card.reverse_holo_confirmed %}
+          {% if card.is_reverse_holo %}
+            <span class="rh-status rh-yes">&#x2726; Yes <span class="rh-confirmed">(Confirmed)</span></span>
+          {% else %}
+            <span class="rh-status rh-no">&#x2717; No <span class="rh-confirmed">(Confirmed)</span></span>
+          {% endif %}
+        {% else %}
+          <span class="rh-status rh-unconfirmed">? Unconfirmed</span>
+        {% endif %}
+        <a href="javascript:void(0)" class="rh-reexamine" onclick="document.getElementById('examineBtn').click()">Re-examine</a>
+      </dd>
+
       <dt>Market Value</dt>
       <dd>
         {% if card.market_price %}
