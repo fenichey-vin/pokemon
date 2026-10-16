@@ -189,6 +189,24 @@ def identify_manual(scan_number):
     return redirect(url_for("main.card_detail", scan_number=scan_number))
 
 
+@main_bp.route("/card/<scan_number>/reset-identity", methods=["POST"])
+@login_required
+def reset_identity(scan_number):
+    card = Card.query.filter_by(scan_number=scan_number).first_or_404()
+    card.identified = False
+    card.identification_status = None
+    card.tcg_card_id = None
+    card.card_name = None
+    card.set_name = None
+    card.set_number = None
+    card.release_date = None
+    card.tcg_image_url = None
+    card.market_price = None
+    card.price_fetched_at = None
+    db.session.commit()
+    return jsonify({"success": True})
+
+
 @main_bp.route("/card/<scan_number>/find-matches", methods=["POST"])
 @login_required
 def find_matches(scan_number):
@@ -199,13 +217,26 @@ def find_matches(scan_number):
     Card.query.filter_by(scan_number=scan_number).first_or_404()
 
     ocr = None
+    ocr_debug = {"temp_download_success": False, "ocr_raw": None}
     try:
-        ocr = ocr_card(scan_number)
+        ocr, ocr_debug = ocr_card(scan_number, _debug=True)
+        current_app.logger.info(
+            "find-matches OCR for %s: temp_dl=%s raw=%s",
+            scan_number, ocr_debug.get("temp_download_success"), ocr_debug.get("ocr_raw", "")[:200],
+        )
     except Exception as e:
         current_app.logger.error("OCR failed for %s: %s", scan_number, e)
 
     if not ocr:
-        return jsonify({"error": "OCR failed — no image or Drive access unavailable"}), 422
+        return jsonify({
+            "error": "OCR failed — no image or Drive access unavailable",
+            "debug": {
+                "temp_download_success": ocr_debug.get("temp_download_success", False),
+                "ocr_raw": ocr_debug.get("ocr_raw"),
+                "queries_attempted": [],
+                "results_per_query": [],
+            },
+        }), 422
 
     rh_result = None
     try:
@@ -219,12 +250,21 @@ def find_matches(scan_number):
     num_stripped = card_num_stripped(card_number_raw)
 
     seen = {}
+    queries_attempted = []
+    results_per_query = []
 
     def _fetch(q):
+        queries_attempted.append(q)
+        url = f"https://api.pokemontcg.io/v2/cards?q={q}&pageSize=20"
+        current_app.logger.info("TCG query for %s: %s", scan_number, url)
         try:
-            return search_cards_q(q)
+            results = search_cards_q(q)
+            results_per_query.append(len(results))
+            current_app.logger.info("TCG query returned %d results for %s (q=%s)", len(results), scan_number, q)
+            return results
         except Exception as e:
-            current_app.logger.warning("TCG query failed (%s): %s", q, e)
+            results_per_query.append(0)
+            current_app.logger.warning("TCG query failed for %s (q=%s): %s", scan_number, q, e)
             return []
 
     for r in _fetch(f"number:{num_stripped} set.ptcgoCode:{set_code}") if (num_stripped and set_code) else []:
@@ -261,12 +301,23 @@ def find_matches(scan_number):
 
     candidates.sort(key=lambda c: c["score"], reverse=True)
 
+    current_app.logger.info(
+        "find-matches for %s: %d candidates from %d queries",
+        scan_number, len(candidates), len(queries_attempted),
+    )
+
     return jsonify({
         "ocr": {
             "card_name": card_name,
             "card_number": card_number_raw,
             "set_code": set_code,
             "confidence": ocr.get("confidence", "low"),
+        },
+        "debug": {
+            "temp_download_success": ocr_debug.get("temp_download_success", False),
+            "ocr_raw": ocr_debug.get("ocr_raw"),
+            "queries_attempted": queries_attempted,
+            "results_per_query": results_per_query,
         },
         "reverse_holo": rh_result,
         "candidates": candidates[:10],

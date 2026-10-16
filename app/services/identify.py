@@ -52,24 +52,28 @@ _REVERSE_HOLO_PROMPT = (
 )
 
 
-def ocr_card(scan_number):
+def ocr_card(scan_number, _debug=False):
     """Run Claude OCR on the card image.
 
     Tries full-resolution Drive download first; falls back to thumbnail.
     Temp files are always cleaned up.
     Returns parsed dict or None.
+    When _debug=True returns (parsed_dict_or_None, {"temp_download_success": bool, "ocr_raw": str_or_None}).
     """
     from app.models import Card
     from app.services.drive import download_full_temp, delete_temp
 
     img_path = None
     used_temp = False
+    temp_download_success = False
+    ocr_raw = None
 
     card = Card.query.filter_by(scan_number=scan_number).first()
     if card and card.drive_file_id_front:
         try:
             img_path = download_full_temp(card.drive_file_id_front, scan_number)
             used_temp = True
+            temp_download_success = True
         except Exception as e:
             current_app.logger.warning(
                 "Full-res download failed for %s, falling back to thumbnail: %s", scan_number, e
@@ -78,6 +82,8 @@ def ocr_card(scan_number):
     if img_path is None:
         thumb_path = os.path.join(THUMBS_DIR, f"{scan_number}.jpg")
         if not os.path.exists(thumb_path):
+            if _debug:
+                return None, {"temp_download_success": temp_download_success, "ocr_raw": None}
             return None
         img_path = thumb_path
 
@@ -102,14 +108,20 @@ def ocr_card(scan_number):
             }],
         )
 
-        raw = response.content[0].text.strip()
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
+        ocr_raw = response.content[0].text.strip()
+        current_app.logger.info("OCR raw response for %s: %s", scan_number, ocr_raw)
+        clean = re.sub(r"^```(?:json)?\s*", "", ocr_raw)
+        clean = re.sub(r"\s*```$", "", clean)
 
         try:
-            return json.loads(raw)
+            parsed = json.loads(clean)
+            if _debug:
+                return parsed, {"temp_download_success": temp_download_success, "ocr_raw": ocr_raw}
+            return parsed
         except json.JSONDecodeError:
-            current_app.logger.warning("OCR JSON parse failed for %s: %s", scan_number, raw[:120])
+            current_app.logger.warning("OCR JSON parse failed for %s: %s", scan_number, ocr_raw[:120])
+            if _debug:
+                return None, {"temp_download_success": temp_download_success, "ocr_raw": ocr_raw}
             return None
 
     finally:

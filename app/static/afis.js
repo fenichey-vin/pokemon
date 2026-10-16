@@ -30,6 +30,8 @@ async function loadCandidates(scanNum) {
   document.getElementById('afisFeaturesList').innerHTML =
     '<div class="afis-feature"><span class="afis-fk">STATUS:</span>'
     + ' <span class="afis-fv" style="color:#4a5568">RUNNING OCR…</span></div>';
+  const dbgPanel = document.getElementById('afisDebugPanel');
+  if (dbgPanel) dbgPanel.style.display = 'none';
 
   try {
     const resp = await fetch('/card/' + scanNum + '/find-matches', { method: 'POST' });
@@ -69,6 +71,31 @@ function rhSectionHTML(rh, scanNum) {
     + '</div>';
 }
 
+function renderDebugPanel(debug) {
+  const panel = document.getElementById('afisDebugPanel');
+  const content = document.getElementById('afisDebugContent');
+  if (!panel || !content || !debug) return;
+
+  const lines = [];
+  lines.push('Drive download: ' + (debug.temp_download_success ? 'SUCCESS' : 'FAILED (used thumbnail fallback)'));
+  lines.push('');
+  lines.push('OCR raw response:');
+  lines.push(debug.ocr_raw != null ? debug.ocr_raw : '(none)');
+  lines.push('');
+  if (debug.queries_attempted && debug.queries_attempted.length) {
+    lines.push('TCG queries:');
+    debug.queries_attempted.forEach(function (q, i) {
+      const n = debug.results_per_query ? (debug.results_per_query[i] != null ? debug.results_per_query[i] : '?') : '?';
+      lines.push('  [' + n + ' results] ' + q);
+    });
+  } else {
+    lines.push('TCG queries: none attempted');
+  }
+
+  content.textContent = lines.join('\n');
+  panel.style.display = '';
+}
+
 function renderWorkspace(data, scanNum) {
   const ocr = data.ocr || {};
   const confLvl = (ocr.confidence || 'low').toLowerCase();
@@ -82,6 +109,8 @@ function renderWorkspace(data, scanNum) {
       + confLvl.toUpperCase() + '</span></div>',
     rhSectionHTML(data.reverse_holo, scanNum),
   ].join('');
+
+  renderDebugPanel(data.debug);
 
   const candidates = data.candidates || [];
   document.getElementById('afisCandidateLabel').textContent =

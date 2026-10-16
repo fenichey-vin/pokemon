@@ -11,6 +11,7 @@
     {% if is_admin %}
       <a href="{{ url_for('admin.edit_card', scan_number=card.scan_number) }}" class="btn btn-primary btn-sm">Edit Card</a>
     {% endif %}
+    <button id="resetIdBtn" class="btn-reset-id" data-scan="{{ card.scan_number }}" title="Clear all identification data">&#x21BA; Reset ID</button>
     <button id="examineBtn" class="btn-afis" data-scan="{{ card.scan_number }}">&#x2295; EXAMINE CANDIDATES</button>
   </div>
 </div>
@@ -35,6 +36,10 @@
         <div id="afisFeaturesList">
           <div class="afis-feature"><span class="afis-fk">STATUS:</span> <span class="afis-fv" style="color:#4a5568">AWAITING ANALYSIS</span></div>
         </div>
+        <details id="afisDebugPanel" style="display:none;margin-top:10px">
+          <summary style="cursor:pointer;font-size:10px;color:#4a5568;letter-spacing:.05em">DEBUG INFO</summary>
+          <div id="afisDebugContent" style="font-size:10px;color:#718096;margin-top:6px;white-space:pre-wrap;word-break:break-all;line-height:1.5"></div>
+        </details>
       </div>
     </div>
 
@@ -343,7 +348,22 @@ async function removeCat(scanNum, catId) {
   }
 }
 
+async function resetIdentity(scanNum, btn) {
+  if (!confirm('Reset all identification data for this card? Grade, notes, categories, and reverse holo status will be kept.')) return;
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const resp = await fetch('/card/' + scanNum + '/reset-identity', { method: 'POST' });
+    if (resp.ok) { location.reload(); return; }
+  } catch (_) {}
+  btn.disabled = false;
+  btn.innerHTML = '&#x21BA; Reset ID';
+}
+
 document.addEventListener('DOMContentLoaded', function () {
+  const resetBtn = document.getElementById('resetIdBtn');
+  if (resetBtn) resetBtn.addEventListener('click', function () { resetIdentity(this.dataset.scan, this); });
+
   // Rotate buttons
   document.querySelectorAll('.rotate-btn[data-scan]').forEach(function (el) {
     el.addEventListener('click', function () {
